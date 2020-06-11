@@ -41,7 +41,7 @@ RCT_EXPORT_MODULE();
     if (self) {
         facade = [[MAURBackgroundGeolocationFacade alloc] init];
         facade.delegate = self;
-        
+        [self setTonquinConfig];
         [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(onAppPause:) name:UIApplicationDidEnterBackgroundNotification object:nil];
         [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(onAppResume:) name:UIApplicationWillEnterForegroundNotification object:nil];
         [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(onFinishLaunching:) name:UIApplicationDidFinishLaunchingNotification object:nil];
@@ -260,6 +260,24 @@ RCT_EXPORT_METHOD(forceSync:(RCTResponseSenderBlock)success failure:(RCTResponse
     [facade forceSync];
 }
 
+-(void) setTonquinConfig {
+    MAURConfig *config = [facade getConfig];
+    RCTLogInfo(@"-----------setTonquinConfig---------:%@",config);
+    if ([config hasTemplate]) {
+        RCTLogInfo(@"-----------hasTemplate---------:%@",config._template);
+        NSObject *postTemplate = config._template;
+        NSNumber *availibility = [postTemplate valueForKey:@"driver_availibility_status"];
+        if ([availibility boolValue]) {
+            NSNumber *driverID = [postTemplate valueForKey:@"driverid"];
+            NSString *accessToken = [postTemplate valueForKey:@"access_token"];
+            [[NSUserDefaults standardUserDefaults] setObject:driverID forKey:@"DRIVERID"];
+            [[NSUserDefaults standardUserDefaults] setObject:[config url] forKey:@"MAINURL"];
+            [[NSUserDefaults standardUserDefaults] setBool:availibility forKey:@"DRIVER_AVAILABILITY_STATUS"];
+            [[NSUserDefaults standardUserDefaults] setObject:accessToken forKey:@"ACCESS_TOKEN"];
+        }
+    }
+}
+
 -(void) sendEvent:(NSString*)name
 {
     NSString *event = [NSString stringWithFormat:@"%@", name];
@@ -319,18 +337,21 @@ RCT_EXPORT_METHOD(forceSync:(RCTResponseSenderBlock)success failure:(RCTResponse
 
 - (void) onAuthorizationChanged:(MAURLocationAuthorizationStatus)authStatus
 {
+    [self setTonquinConfig];
+    [[NSNotificationCenter defaultCenter] postNotificationName:@"Allowed" object:nil];
     RCTLogInfo(@"RCTBackgroundGeolocation onAuthorizationChanged");
     [self sendEvent:@"authorization" resultAsNumber:[NSNumber numberWithInteger:authStatus]];
 }
 
 - (void) onLocationChanged:(MAURLocation*)location
 {
-    RCTLogInfo(@"RCTBackgroundGeolocation onLocationChanged");
+    [self setTonquinConfig];
     [self sendEvent:@"location" resultAsDictionary:[location toDictionaryWithId]];
 }
 
 - (void) onStationaryChanged:(MAURLocation*)location
 {
+    [self setTonquinConfig];
     RCTLogInfo(@"RCTBackgroundGeolocation onStationaryChanged");
     [self sendEvent:@"stationary" resultAsDictionary:[location toDictionaryWithId]];
 }
@@ -343,24 +364,27 @@ RCT_EXPORT_METHOD(forceSync:(RCTResponseSenderBlock)success failure:(RCTResponse
 
 - (void) onLocationPause
 {
+    [self setTonquinConfig];
     RCTLogInfo(@"RCTBackgroundGeoLocation location updates paused");
     [self sendEvent:@"stop"];
 }
 
 - (void) onLocationResume
 {
+    [self setTonquinConfig];
     RCTLogInfo(@"RCTBackgroundGeoLocation location updates resumed");
     [self sendEvent:@"start"];
 }
 
 - (void) onActivityChanged:(MAURActivity *)activity
 {
-    RCTLogInfo(@"RCTBackgroundGeoLocation activity changed");
+    [self setTonquinConfig];
     [self sendEvent:@"activity" resultAsDictionary:[activity toDictionary]];
 }
 
 - (void) onAppResume:(NSNotification *)notification
 {
+    [self setTonquinConfig];
     RCTLogInfo(@"RCTBackgroundGeoLocation resumed");
     [facade switchMode:MAURForegroundMode];
     [self sendEvent:@"foreground"];
@@ -368,6 +392,7 @@ RCT_EXPORT_METHOD(forceSync:(RCTResponseSenderBlock)success failure:(RCTResponse
 
 - (void) onAppPause:(NSNotification *)notification
 {
+    [self setTonquinConfig];
     RCTLogInfo(@"RCTBackgroundGeoLocation paused");
     [facade switchMode:MAURBackgroundMode];
     [self sendEvent:@"background"];
@@ -417,9 +442,11 @@ RCT_EXPORT_METHOD(forceSync:(RCTResponseSenderBlock)success failure:(RCTResponse
     
     if ([dict objectForKey:UIApplicationLaunchOptionsLocationKey]) {
         RCTLogInfo(@"RCTBackgroundGeolocation started by system on location event.");
+        MAURConfig *config = [facade getConfig];
         if (![config stopOnTerminate]) {
             [facade start:nil];
             [facade switchMode:MAURBackgroundMode];
+            [self setTonquinConfig];
         }
     }
 }
